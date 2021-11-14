@@ -5,6 +5,7 @@ from activation_func import *
 from loss_func import *
 from metric_func import *
 from help_func import one_hot
+import sys
 
 activation_func_dict = {'sigmoid': (sigmoid, grad_sigmoid), 'relu': (
     relu, grad_relu), 'softmax': (softmax, grad_softmax)}
@@ -129,13 +130,15 @@ class MySequential:
             self.grad_W[i] += np.matmul(tmp_output, delta.T)
 
     def fit(self, X_train, y_train, loss='mse', learning_rate=0.001,
-            batch_size=32, epoch=5, shuffle=True, X_valid=None, y_valid=None, valid_spilt=None):
+            batch_size=32, epoch=5, sparse=False, shuffle=True,
+             X_valid=None, y_valid=None, valid_spilt=None):
         r'''
         更新神经网络参数以拟合训练集，即训练神经网络
         X_train, y_train: 训练集
         loss: 损失函数
         learning_rate, batch_size, epoch: 超参数
-        shuffle: 打乱训练集，先打乱再划分验证集（如果需要划分的话）
+        shuffle: 为True时打乱训练集，先打乱再划分验证集（如果需要划分的话）
+        sparse: 为True时输入标签为数值类型，反之为独热码
         X_valid, y_valid: 验证集
         valid_spilt: 训练集划分给验证集的比例，当指定验证集时此参数无效
         '''
@@ -161,7 +164,12 @@ class MySequential:
         self.zero_grad()  # 初始化梯度变化矩阵
         for e in range(epoch):
             losses = []
-            print(f'Epoch {e+1}, ', end="")
+            print(f'Epoch {e+1}/{epoch}')
+            batch_num = 0
+            batch_num_max = len(X_train) // batch_size
+            tmp_n = 40 * batch_num//batch_num_max
+            sys.stdout.write(
+                '\r'+f"{batch_num}/{batch_num_max} [{tmp_n*'='+(40-tmp_n)*' '}]")  # 模仿keras输出
             batch_cnt = 0  # TODO 这个方法其实有点蠢了，batch可以用矩阵计算的
             for X, y in zip(X_train, y_train):
                 # if loss == 'mse': # 保险起见先加个特判，TODO 事实上应该改成from_logit判断
@@ -170,12 +178,16 @@ class MySequential:
                 # 前向传播计算输出
                 y_hat, inputs, outputs = self.forward(X, return_details=True)
                 output_loss = loss_func_dict[loss][0](
-                    y_hat, y.reshape((1, -1)))  # 计算损失函数值
+                    y_hat, y.reshape((1, -1)), sparse=sparse, num_classes=self.output_dim)  # 计算损失函数值
                 losses.append(output_loss)
                 output_grad_loss = loss_func_dict[loss][1](
-                    outputs[-1], y.reshape(-1, 1))  # TODO shape应为: (output_dim, 1)
+                    outputs[-1], y.reshape(-1, 1), sparse=sparse, num_classes=self.output_dim)  # TODO shape应为: (output_dim, 1)
                 self.backward(output_grad_loss, inputs, outputs)
                 if batch_cnt == batch_size:
+                    batch_num += 1
+                    tmp_n = min(40, 40 * batch_num//batch_num_max)
+                    sys.stdout.write(
+                        '\r'+f"{batch_num}/{batch_num_max} [{tmp_n*'='+(40-tmp_n)*' '}]")
                     batch_cnt = 0
                     self.update_weight(learning_rate, batch_size)
                     self.zero_grad()
@@ -183,12 +195,15 @@ class MySequential:
             if batch_cnt != 0:
                 self.update_weight(learning_rate, batch_cnt)
                 self.zero_grad()
+            sys.stdout.write(
+                '\r'+f"{batch_num_max}/{batch_num_max} [{40*'='}]")
             losses = np.array(losses)
-            print(f'training loss = {losses.mean()}')
+            print(f'  loss: {losses.mean()}', end=" ")
             epoch_losses.append(losses.mean())
             if has_valid:
                 print('valid', end=" ")
-                self.evaluate(X_valid, y_valid)
+                self.evaluate(X_valid, y_valid, sparse=sparse)
+            print()
         # 绘制训练误差下降曲线
         plt.plot(epoch_losses)
         plt.xlabel('epoch')
@@ -202,9 +217,14 @@ class MySequential:
         y_hat = self.forward(X, return_details=False)
         return y_hat.argmax(axis=1)
 
-    def evaluate(self, X_test, y_test, metric='accuracy'):
+    def evaluate(self, X_test, y_test, sparse=False, metric='accuracy'):
+        r'''
+        sparse: 为True时输入标签为数值类型，反之为独热码
+        '''
         assert metric in metric_func_dict.keys(), f"不支持的评价指标：{metric}"
         y_pred = self.predict(X_test)
+        if not sparse:
+            y_test = y_test.argmax(axis=1)
         print(metric+":"+str(metric_func_dict[metric](y_pred, y_test)))
 
 
