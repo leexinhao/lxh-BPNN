@@ -20,7 +20,8 @@ def grad_relu(X):
 
 
 def softmax(X):
-    exps = np.exp(X)
+    shift_X = X - np.max(X)
+    exps = np.exp(shift_X)
     return exps / np.sum(exps)
 
 

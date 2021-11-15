@@ -178,7 +178,7 @@ class MySequential:
                 # 前向传播计算输出
                 y_hat, inputs, outputs = self.forward(X, return_details=True)
                 output_loss = loss_func_dict[loss][0](
-                    y_hat, y.reshape((1, -1)), sparse=sparse, num_classes=self.output_dim)  # 计算损失函数值
+                    y_hat, y.reshape(1, -1), sparse=sparse, num_classes=self.output_dim)  # 计算损失函数值 TODO
                 losses.append(output_loss)
                 output_grad_loss = loss_func_dict[loss][1](
                     outputs[-1], y.reshape(-1, 1), sparse=sparse, num_classes=self.output_dim)  # TODO shape应为: (output_dim, 1)
